@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: get-products
-        image: <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/escolaronline-get-products:latest
+        image: 314870398011.dkr.ecr.us-east-1.amazonaws.com/escolaronline-get-products:latest
         ports:
         - containerPort: 3001
         env:

@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: create-product
-        image: <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/escolaronline-create-product:latest
+        image: 314870398011.dkr.ecr.us-east-1.amazonaws.com/escolaronline-create-product:latest
         ports:
         - containerPort: 3002
         env:
