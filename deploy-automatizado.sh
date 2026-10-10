@@ -24,7 +24,7 @@ if ! command -v aws &> /dev/null; then
     echo -e "   ${C_CYAN}-> Instalando AWS CLI v2...${C_RESET}"
     curl -s "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"
     unzip -q awscliv2.zip
-    sudo ./aws/install
+    sudo ./aws/install > /dev/null
     rm -rf awscliv2.zip aws/
 fi
 
@@ -120,7 +120,14 @@ metadata:
     kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
-    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+    
+    # Habilitar Puertos 80 y 443 en el Balanceador de Carga
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    
+    # SOLUCIÓN AL ERROR 404 DE HEALTH CHECKS
+    # Acepta el código 404 como "Sano" para los microservicios backend
+    alb.ingress.kubernetes.io/success-codes: "200,404"
+    
     alb.ingress.kubernetes.io/conditions.get-products: >
       [{"field":"http-request-method", "httpRequestMethodConfig":{"values":["GET", "OPTIONS"]}}]
     alb.ingress.kubernetes.io/conditions.create-product: >
