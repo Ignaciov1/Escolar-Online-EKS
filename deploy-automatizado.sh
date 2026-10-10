@@ -3,11 +3,10 @@ set -e
 
 echo "=== Iniciando Despliegue Automatizado de EscolarOnline ==="
 
-# --- 0. Variables ---
+# --- 0. Variables Dinámicas e Identificadores ---
 REGION="us-east-1"
 CLUSTER_NAME="escolaronline-cluster"
 ACCOUNT_ID="314870398011"
-RDS_ENDPOINT="escolaronline-db.cb1ojeyuxu78.us-east-1.rds.amazonaws.com"
 REPO_DIR="/home/ubuntu/Escolar-Online-EKS"
 
 # --- 1. Conexión y Base de Datos ---
@@ -16,9 +15,14 @@ aws eks update-kubeconfig --region $REGION --name $CLUSTER_NAME
 
 VPC_ID=$(aws eks describe-cluster --name $CLUSTER_NAME --query "cluster.resourcesVpcConfig.vpcId" --output text)
 VPC_CIDR=$(aws ec2 describe-vpcs --vpc-ids $VPC_ID --query "Vpcs[0].CidrBlock" --output text)
-RDS_SG=$(aws rds describe-db-instances --db-instance-identifier escolaronline-db --query "DBInstances[0].VpcSecurityGroups[0].VpcSecurityGroupId" --output text)
 
-# Se omite error si la regla ya existe
+# Obtener dinámicamente el Security Group y el Endpoint de RDS
+RDS_SG=$(aws rds describe-db-instances --db-instance-identifier escolaronline-db --query "DBInstances[0].VpcSecurityGroups[0].VpcSecurityGroupId" --output text)
+RDS_ENDPOINT=$(aws rds describe-db-instances --db-instance-identifier escolaronline-db --query "DBInstances[0].Endpoint.Address" --output text)
+
+echo "El DNS actual de RDS es: $RDS_ENDPOINT"
+
+# Se omite error si la regla del puerto 3306 ya existe
 aws ec2 authorize-security-group-ingress --group-id $RDS_SG --protocol tcp --port 3306 --cidr $VPC_CIDR 2>/dev/null || true
 
 cd $REPO_DIR
@@ -26,7 +30,6 @@ mysql -h $RDS_ENDPOINT -u alumno -palumno123 < init.sql
 
 # --- 2. Corrección de Puertos y Subida a ECR ---
 echo "=== Fase 2: Limpiando puertos del frontend y subiendo imágenes a ECR ==="
-# Quitar puertos estáticos para que el Ingress rutee correctamente de forma interna
 sed -i "s/:3001//g" microservicioEKSFrontend/js/app.js
 sed -i "s/:3002//g" microservicioEKSFrontend/js/app.js
 sed -i "s/:3003//g" microservicioEKSFrontend/js/app.js
