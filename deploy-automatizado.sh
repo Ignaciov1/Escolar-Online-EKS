@@ -90,6 +90,10 @@ kubectl apply -f update-product-deployment.yaml > /dev/null
 kubectl apply -f update-product-service.yaml > /dev/null
 kubectl apply -f delete-product-deployment.yaml > /dev/null
 kubectl apply -f delete-product-service.yaml > /dev/null
+
+# Forzar a Kubernetes a reiniciar los pods para que descarguen el código fresco (Health Checks)
+kubectl rollout restart deployment get-products create-product update-product delete-product -n escolaronline > /dev/null
+
 echo -e "${C_GREEN}✔ Microservicios desplegados en el clúster.${C_RESET}\n"
 
 # --- 4. ALB Controller e Ingress ---
@@ -121,12 +125,8 @@ metadata:
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
     
-    # Habilitar Puertos 80 y 443 en el Balanceador de Carga
+    # Exigencia: Escuchar por HTTP (80) y HTTPS (443)
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
-    
-    # SOLUCIÓN AL ERROR 404 DE HEALTH CHECKS
-    # Acepta el código 404 como "Sano" para los microservicios backend
-    alb.ingress.kubernetes.io/success-codes: "200,404"
     
     alb.ingress.kubernetes.io/conditions.get-products: >
       [{"field":"http-request-method", "httpRequestMethodConfig":{"values":["GET", "OPTIONS"]}}]

@@ -7,6 +7,11 @@ app.use(express.json());
 const PORT = process.env.PORT || 3002;
 const dbConfig = { host: process.env.DB_HOST || 'localhost', user: process.env.DB_USER || 'alumno', password: process.env.DB_PASS || 'alumno123', database: process.env.DB_NAME || 'escolar_online', port: process.env.DB_PORT || 3306 };
 
+// --- NUEVO: Health Check explícito para el ALB de AWS en la ruta raíz ---
+app.get('/', (req, res) => {
+    res.status(200).send('Microservicio create-product OK');
+});
+
 app.post('/api/products', async (req, res) => {
   try {
     const { nombre, descripcion, precio, stock, categoria } = req.body;
