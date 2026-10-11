@@ -122,7 +122,10 @@ kubectl set env deployment aws-load-balancer-controller -n kube-system \
   AWS_SESSION_TOKEN=$AWS_ST
 
 kubectl rollout restart deployment aws-load-balancer-controller -n kube-system > /dev/null
-sleep 15
+
+echo -e "   ${C_YELLOW}-> Esperando a que el ALB Controller esté 100% listo (esto evita el error del webhook)...${C_RESET}"
+kubectl rollout status deployment aws-load-balancer-controller -n kube-system --timeout=180s
+sleep 10
 
 echo -e "   ${C_CYAN}-> Generando e importando certificado ACM para HTTPS...${C_RESET}"
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout alb_key.pem -out alb_cert.pem -subj "/CN=escolaronline-local.com/O=EscolarOnline" 2>/dev/null
