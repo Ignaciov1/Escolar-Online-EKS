@@ -91,7 +91,7 @@ kubectl apply -f update-product-service.yaml > /dev/null
 kubectl apply -f delete-product-deployment.yaml > /dev/null
 kubectl apply -f delete-product-service.yaml > /dev/null
 
-# Forzar a Kubernetes a reiniciar los pods para que descarguen el código fresco (Health Checks)
+# Forzar a Kubernetes a reiniciar los pods para que descarguen el código fresco
 kubectl rollout restart deployment get-products create-product update-product delete-product -n escolaronline > /dev/null
 
 echo -e "${C_GREEN}✔ Microservicios desplegados en el clúster.${C_RESET}\n"
@@ -111,10 +111,24 @@ for NODE in $NODES; do
   aws ec2 modify-instance-metadata-options --instance-id $NODE --http-put-response-hop-limit 2 > /dev/null 2>&1
 done
 
+echo -e "   ${C_CYAN}-> Inyectando credenciales al ALB Controller...${C_RESET}"
+export AWS_AK=$(awk -F'=' '/aws_access_key_id/ {print $2}' ~/.aws/credentials | tr -d ' ' | tr -d '\r')
+export AWS_SK=$(awk -F'=' '/aws_secret_access_key/ {print $2}' ~/.aws/credentials | tr -d ' ' | tr -d '\r')
+export AWS_ST=$(awk -F'=' '/aws_session_token/ {print $2}' ~/.aws/credentials | tr -d ' ' | tr -d '\r')
+
+kubectl set env deployment aws-load-balancer-controller -n kube-system \
+  AWS_ACCESS_KEY_ID=$AWS_AK \
+  AWS_SECRET_ACCESS_KEY=$AWS_SK \
+  AWS_SESSION_TOKEN=$AWS_ST
+
 kubectl rollout restart deployment aws-load-balancer-controller -n kube-system > /dev/null
 sleep 15
 
-cat << 'EOF' > ingress-advanced.yaml
+echo -e "   ${C_CYAN}-> Generando e importando certificado ACM para HTTPS...${C_RESET}"
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout alb_key.pem -out alb_cert.pem -subj "/CN=escolaronline-local.com/O=EscolarOnline" 2>/dev/null
+CERT_ARN=$(aws acm import-certificate --certificate fileb://alb_cert.pem --private-key fileb://alb_key.pem --query "CertificateArn" --output text)
+
+cat << EOF > ingress-advanced.yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -124,10 +138,8 @@ metadata:
     kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
-    
-    # Exigencia: Escuchar por HTTP (80) y HTTPS (443)
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
-    
+    alb.ingress.kubernetes.io/certificate-arn: "$CERT_ARN"
     alb.ingress.kubernetes.io/conditions.get-products: >
       [{"field":"http-request-method", "httpRequestMethodConfig":{"values":["GET", "OPTIONS"]}}]
     alb.ingress.kubernetes.io/conditions.create-product: >
@@ -190,5 +202,5 @@ echo -e "${C_GREEN}✔ Políticas de autoescalado activadas.${C_RESET}\n"
 
 echo -e "${C_BLUE}=================================================================${C_RESET}"
 echo -e "${C_CYAN}🎉 DESPLIEGUE FINALIZADO CON ÉXITO 🎉${C_RESET}"
-echo -e "Ejecuta ${C_YELLOW}kubectl get ingress -n escolaronline${C_RESET} para obtener tu URL pública."
+echo -e "Espera un par de minutos y ejecuta ${C_YELLOW}kubectl get ingress -n escolaronline${C_RESET} para obtener tu URL pública."
 echo -e "${C_BLUE}=================================================================${C_RESET}\n"
