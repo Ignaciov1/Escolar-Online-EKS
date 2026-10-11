@@ -108,7 +108,7 @@ kubectl apply -f v2_5_4_full.yaml > /dev/null 2>&1
 
 NODES=$(aws ec2 describe-instances --filters "Name=instance-state-name,Values=running" --query "Reservations[*].Instances[*].InstanceId" --output text)
 for NODE in $NODES; do
-  aws ec2 modify-instance-metadata-options --instance-id $NODE --http-put-response-hop-limit 2 > /dev/null 2>&1
+  aws ec2 modify-instance-metadata-options --instance-id $NODE --http-put-response-hop-limit 2 > /dev/null 2>&1 || true
 done
 
 echo -e "   ${C_CYAN}-> Inyectando credenciales al ALB Controller...${C_RESET}"
