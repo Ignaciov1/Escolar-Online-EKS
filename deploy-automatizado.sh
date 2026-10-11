@@ -203,6 +203,14 @@ kubectl apply -f hpa-update-product.yaml > /dev/null
 kubectl apply -f hpa-delete-product.yaml > /dev/null
 echo -e "${C_GREEN}✔ Políticas de autoescalado activadas.${C_RESET}\n"
 
+# --- 6. Habilitar Logs de EKS (Container Insights parcial) ---
+echo -e "${C_YELLOW}[Paso 6] Habilitando Logs del Plano de Control en CloudWatch...${C_RESET}"
+aws eks update-cluster-config \
+  --name $CLUSTER_NAME \
+  --region $REGION \
+  --logging '{"clusterLogging":[{"types":["api","audit","authenticator","controllerManager","scheduler"],"enabled":true}]}' > /dev/null 2>&1 || true
+echo -e "${C_GREEN}✔ Logs del clúster configurados.${C_RESET}\n"
+
 echo -e "${C_BLUE}=================================================================${C_RESET}"
 echo -e "${C_CYAN}🎉 DESPLIEGUE FINALIZADO CON ÉXITO 🎉${C_RESET}"
 echo -e "Espera un par de minutos y ejecuta ${C_YELLOW}kubectl get ingress -n escolaronline${C_RESET} para obtener tu URL pública."
