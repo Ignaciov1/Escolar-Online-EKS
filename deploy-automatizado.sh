@@ -52,7 +52,7 @@ RDS_SG=$(aws rds describe-db-instances --db-instance-identifier escolaronline-db
 RDS_ENDPOINT=$(aws rds describe-db-instances --db-instance-identifier escolaronline-db --query "DBInstances[0].Endpoint.Address" --output text)
 
 echo -e "   ${C_CYAN}-> DNS Dinámico de RDS: ${C_RESET}$RDS_ENDPOINT"
-aws ec2 authorize-security-group-ingress --group-id $RDS_SG --protocol tcp --port 3306 --cidr $VPC_CIDR 2>/dev/null || true
+aws ec2 authorize-security-group-ingress --group-id $RDS_SG --protocol tcp --port 3306 --cidr $VPC_CIDR > /dev/null 2>&1 || true
 
 cd $REPO_DIR
 mysql -h $RDS_ENDPOINT -u alumno -palumno123 < init.sql 2>/dev/null || true
@@ -91,15 +91,22 @@ kubectl apply -f update-product-service.yaml > /dev/null
 kubectl apply -f delete-product-deployment.yaml > /dev/null
 kubectl apply -f delete-product-service.yaml > /dev/null
 
-kubectl rollout restart deployment get-products create-product update-product delete-product -n escolaronline > /dev/null || true
+echo -e "   ${C_CYAN}-> Esperando a que los microservicios estén en ejecución...${C_RESET}"
+kubectl rollout status deployment frontend get-products create-product update-product delete-product -n escolaronline --timeout=120s > /dev/null 2>&1 || true
 
 echo -e "${C_GREEN}✔ Microservicios desplegados en el clúster.${C_RESET}\n"
 
 # --- 4. ALB Controller e Ingress ---
 echo -e "${C_YELLOW}[Paso 4] Configurando Balanceador de Carga e Ingress...${C_RESET}"
+echo -e "   ${C_CYAN}-> Instalando y esperando a cert-manager...${C_RESET}"
 kubectl apply --validate=false -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.5/cert-manager.yaml > /dev/null 2>&1 || true
-sleep 30
 
+kubectl rollout status deployment cert-manager -n cert-manager --timeout=120s > /dev/null
+kubectl rollout status deployment cert-manager-cainjector -n cert-manager --timeout=120s > /dev/null
+kubectl rollout status deployment cert-manager-webhook -n cert-manager --timeout=120s > /dev/null
+sleep 15
+
+echo -e "   ${C_CYAN}-> Aplicando manifiesto del ALB Controller...${C_RESET}"
 curl -s -Lo v2_5_4_full.yaml https://github.com/kubernetes-sigs/aws-load-balancer-controller/releases/download/v2.5.4/v2_5_4_full.yaml
 sed -i "s/your-cluster-name/$CLUSTER_NAME/g" v2_5_4_full.yaml
 sed -i "s/--cluster-name=$CLUSTER_NAME/--cluster-name=$CLUSTER_NAME\n        - --aws-region=$REGION\n        - --aws-vpc-id=$VPC_ID/g" v2_5_4_full.yaml
@@ -110,7 +117,9 @@ for NODE in $NODES; do
   aws ec2 modify-instance-metadata-options --instance-id $NODE --http-put-response-hop-limit 2 > /dev/null 2>&1 || true
 done
 
-echo -e "   ${C_CYAN}-> Inyectando credenciales al ALB Controller...${C_RESET}"
+echo -e "   ${C_CYAN}-> Ajustando a 1 réplica e inyectando credenciales al ALB Controller...${C_RESET}"
+kubectl scale deployment aws-load-balancer-controller -n kube-system --replicas=1 > /dev/null 2>&1 || true
+
 export AWS_AK=$(awk -F'=' '/aws_access_key_id/ {print $2}' ~/.aws/credentials | tr -d ' ' | tr -d '\r')
 export AWS_SK=$(awk -F'=' '/aws_secret_access_key/ {print $2}' ~/.aws/credentials | tr -d ' ' | tr -d '\r')
 export AWS_ST=$(awk -F'=' '/aws_session_token/ {print $2}' ~/.aws/credentials | tr -d ' ' | tr -d '\r')
@@ -118,12 +127,10 @@ export AWS_ST=$(awk -F'=' '/aws_session_token/ {print $2}' ~/.aws/credentials | 
 kubectl set env deployment aws-load-balancer-controller -n kube-system \
   AWS_ACCESS_KEY_ID=$AWS_AK \
   AWS_SECRET_ACCESS_KEY=$AWS_SK \
-  AWS_SESSION_TOKEN=$AWS_ST || true
+  AWS_SESSION_TOKEN=$AWS_ST > /dev/null 2>&1 || true
 
-kubectl rollout restart deployment aws-load-balancer-controller -n kube-system > /dev/null 2>&1 || true
-
-echo -e "   ${C_YELLOW}-> Esperando a que el ALB Controller esté 100% listo (esto evita el error del webhook)...${C_RESET}"
-kubectl rollout status deployment aws-load-balancer-controller -n kube-system --timeout=180s || true
+echo -e "   ${C_YELLOW}-> Esperando a que el ALB Controller esté 100% listo...${C_RESET}"
+kubectl rollout status deployment aws-load-balancer-controller -n kube-system --timeout=180s
 sleep 10
 
 echo -e "   ${C_CYAN}-> Generando e importando certificado ACM para HTTPS...${C_RESET}"
@@ -191,7 +198,14 @@ spec:
               number: 80
 INGRESS_EOF
 
-kubectl apply -f ingress-advanced.yaml > /dev/null || true
+for i in {1..5}; do
+  if kubectl apply -f ingress-advanced.yaml > /dev/null 2>&1; then
+    break
+  fi
+  echo -e "   ${C_YELLOW}-> Esperando al webhook del Ingress (intento $i/5)...${C_RESET}"
+  sleep 10
+done
+
 echo -e "${C_GREEN}✔ Balanceador de Carga provisionado.${C_RESET}\n"
 
 # --- 5. HPA ---
