@@ -52,8 +52,9 @@ for NODE in $NODES; do
   aws ec2 modify-instance-metadata-options --instance-id $NODE --http-put-response-hop-limit 2 > /dev/null 2>&1 || true
 done
 
-# Ajustar coredns a 1 réplica para optimizar el límite de 11 pods por nodo t3.small
-#kubectl scale deployment coredns -n kube-system --replicas=1 > /dev/null 2>&1 || true
+# >>> CAMBIO REGISTRADO: Se comenta esta línea. Al usar instancias más grandes (t4g.medium o superior) en Terraform, 
+# ya no hay problemas de límite de 11 pods. Dejar que CoreDNS use sus 2 réplicas por defecto mejora la estabilidad de la red.
+# kubectl scale deployment coredns -n kube-system --replicas=1 > /dev/null 2>&1 || true
 
 VPC_ID=$(aws eks describe-cluster --name $CLUSTER_NAME --query "cluster.resourcesVpcConfig.vpcId" --output text)
 VPC_CIDR=$(aws ec2 describe-vpcs --vpc-ids $VPC_ID --query "Vpcs[0].CidrBlock" --output text)
@@ -139,10 +140,18 @@ echo -e "   ${C_CYAN}-> Aplicando manifiesto del ALB Controller...${C_RESET}"
 curl -s -Lo v2_5_4_full.yaml https://github.com/kubernetes-sigs/aws-load-balancer-controller/releases/download/v2.5.4/v2_5_4_full.yaml
 sed -i "s/your-cluster-name/$CLUSTER_NAME/g" v2_5_4_full.yaml
 sed -i "s/--cluster-name=$CLUSTER_NAME/--cluster-name=$CLUSTER_NAME\n        - --aws-region=$REGION\n        - --aws-vpc-id=$VPC_ID/g" v2_5_4_full.yaml
+
+# >>> CAMBIO REGISTRADO: Reemplazamos 'replicas: 2' por 'replicas: 1' en el YAML original ANTES de aplicarlo.
+# Esto asegura que el pod nazca directamente en singular, dejando espacio libre en el nodo.
+sed -i 's/replicas: 2/replicas: 1/g' v2_5_4_full.yaml
+
 kubectl apply -f v2_5_4_full.yaml > /dev/null 2>&1 || true
 
-echo -e "   ${C_CYAN}-> Ajustando a 1 réplica e inyectando credenciales al ALB Controller...${C_RESET}"
-kubectl scale deployment aws-load-balancer-controller -n kube-system --replicas=1 > /dev/null 2>&1 || true
+echo -e "   ${C_CYAN}-> Inyectando credenciales al ALB Controller...${C_RESET}"
+
+# >>> CAMBIO REGISTRADO: Se eliminó la línea "kubectl scale deployment aws-load-balancer-controller...".
+# Ya no es necesaria porque modificamos el YAML arriba. Al eliminarla evitamos la condición de carrera
+# que provocaba el error de "1 old replicas are pending termination" durante el Rolling Update.
 
 export AWS_AK=$(awk -F'=' '/aws_access_key_id/ {print $2}' ~/.aws/credentials | tr -d ' ' | tr -d '\r')
 export AWS_SK=$(awk -F'=' '/aws_secret_access_key/ {print $2}' ~/.aws/credentials | tr -d ' ' | tr -d '\r')
