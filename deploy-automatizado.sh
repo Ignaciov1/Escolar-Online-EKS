@@ -53,7 +53,7 @@ for NODE in $NODES; do
 done
 
 # Ajustar coredns a 1 réplica para optimizar el límite de 11 pods por nodo t3.small
-kubectl scale deployment coredns -n kube-system --replicas=1 > /dev/null 2>&1 || true
+#kubectl scale deployment coredns -n kube-system --replicas=1 > /dev/null 2>&1 || true
 
 VPC_ID=$(aws eks describe-cluster --name $CLUSTER_NAME --query "cluster.resourcesVpcConfig.vpcId" --output text)
 VPC_CIDR=$(aws ec2 describe-vpcs --vpc-ids $VPC_ID --query "Vpcs[0].CidrBlock" --output text)
