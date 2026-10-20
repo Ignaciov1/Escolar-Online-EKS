@@ -46,6 +46,15 @@ REPO_DIR="/home/ubuntu/Escolar-Online-EKS"
 echo -e "${C_YELLOW}[Paso 1] Conectando a EKS y configurando base de datos RDS...${C_RESET}"
 aws eks update-kubeconfig --region $REGION --name $CLUSTER_NAME > /dev/null 2>&1
 
+# Habilitar IMDSv2 hop-limit=2 en los nodos desde el inicio para ALB y Container Insights
+NODES=$(aws ec2 describe-instances --filters "Name=instance-state-name,Values=running" --query "Reservations[*].Instances[*].InstanceId" --output text)
+for NODE in $NODES; do
+  aws ec2 modify-instance-metadata-options --instance-id $NODE --http-put-response-hop-limit 2 > /dev/null 2>&1 || true
+done
+
+# Ajustar coredns a 1 réplica para optimizar el límite de 11 pods por nodo t3.small
+kubectl scale deployment coredns -n kube-system --replicas=1 > /dev/null 2>&1 || true
+
 VPC_ID=$(aws eks describe-cluster --name $CLUSTER_NAME --query "cluster.resourcesVpcConfig.vpcId" --output text)
 VPC_CIDR=$(aws ec2 describe-vpcs --vpc-ids $VPC_ID --query "Vpcs[0].CidrBlock" --output text)
 RDS_SG=$(aws rds describe-db-instances --db-instance-identifier escolaronline-db --query "DBInstances[0].VpcSecurityGroups[0].VpcSecurityGroupId" --output text)
@@ -70,8 +79,26 @@ aws ecr get-login-password --region $REGION | sudo docker login --username AWS -
 sudo ./scripts/ecr-push.sh > /dev/null 2>&1 || true
 echo -e "${C_GREEN}✔ Imágenes compiladas y alojadas en ECR.${C_RESET}\n"
 
-# --- 3. Despliegue de Kubernetes ---
-echo -e "${C_YELLOW}[Paso 3] Desplegando manifiestos de Kubernetes...${C_RESET}"
+# --- 3. Despliegue de Container Insights (Primero para reservar cupo DaemonSet en cada nodo) ---
+echo -e "${C_YELLOW}[Paso 3] Habilitando CloudWatch Container Insights y Logs de EKS...${C_RESET}"
+aws eks update-cluster-config \
+  --name $CLUSTER_NAME \
+  --region $REGION \
+  --logging '{"clusterLogging":[{"types":["api","audit","authenticator","controllerManager","scheduler"],"enabled":true}]}' > /dev/null 2>&1 || true
+
+FluentBitHttpPort='2020'
+FluentBitReadFromHead='Off'
+FluentBitReadFromTail='On'
+FluentBitHttpServer='On'
+
+curl -s https://raw.githubusercontent.com/aws-samples/amazon-cloudwatch-container-insights/latest/k8s-deployment-manifest-templates/deployment-mode/daemonset/container-insights-monitoring/quickstart/cwagent-fluent-bit-quickstart.yaml \
+| sed 's/{{cluster_name}}/'${CLUSTER_NAME}'/;s/{{region_name}}/'${REGION}'/;s/{{http_server_toggle}}/"'${FluentBitHttpServer}'"/;s/{{http_server_port}}/"'${FluentBitHttpPort}'"/;s/{{read_from_head}}/"'${FluentBitReadFromHead}'"/;s/{{read_from_tail}}/"'${FluentBitReadFromTail}'"/' \
+| kubectl apply -f - > /dev/null 2>&1 || true
+
+echo -e "${C_GREEN}✔ Agentes de Container Insights y Logs configurados.${C_RESET}\n"
+
+# --- 4. Despliegue de Microservicios Kubernetes ---
+echo -e "${C_YELLOW}[Paso 4] Desplegando manifiestos de Kubernetes...${C_RESET}"
 cd $REPO_DIR/k8s
 sed -i "s/<ACCOUNT_ID>/$ACCOUNT_ID/g" *-deployment.yaml
 sed -i "s/<RDS_ENDPOINT>/$RDS_ENDPOINT/g" configmap.yaml
@@ -82,6 +109,8 @@ kubectl apply -f configmap.yaml > /dev/null
 kubectl apply -f secret.yaml > /dev/null
 kubectl apply -f frontend-deployment.yaml > /dev/null
 kubectl apply -f frontend-service.yaml > /dev/null
+kubectl scale deployment frontend -n escolaronline --replicas=1 > /dev/null 2>&1 || true
+
 kubectl apply -f get-products-deployment.yaml > /dev/null
 kubectl apply -f get-products-service.yaml > /dev/null
 kubectl apply -f create-product-deployment.yaml > /dev/null
@@ -96,8 +125,8 @@ kubectl rollout status deployment frontend get-products create-product update-pr
 
 echo -e "${C_GREEN}✔ Microservicios desplegados en el clúster.${C_RESET}\n"
 
-# --- 4. ALB Controller e Ingress ---
-echo -e "${C_YELLOW}[Paso 4] Configurando Balanceador de Carga e Ingress...${C_RESET}"
+# --- 5. ALB Controller e Ingress ---
+echo -e "${C_YELLOW}[Paso 5] Configurando Balanceador de Carga e Ingress...${C_RESET}"
 echo -e "   ${C_CYAN}-> Instalando y esperando a cert-manager...${C_RESET}"
 kubectl apply --validate=false -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.5/cert-manager.yaml > /dev/null 2>&1 || true
 
@@ -111,11 +140,6 @@ curl -s -Lo v2_5_4_full.yaml https://github.com/kubernetes-sigs/aws-load-balance
 sed -i "s/your-cluster-name/$CLUSTER_NAME/g" v2_5_4_full.yaml
 sed -i "s/--cluster-name=$CLUSTER_NAME/--cluster-name=$CLUSTER_NAME\n        - --aws-region=$REGION\n        - --aws-vpc-id=$VPC_ID/g" v2_5_4_full.yaml
 kubectl apply -f v2_5_4_full.yaml > /dev/null 2>&1 || true
-
-NODES=$(aws ec2 describe-instances --filters "Name=instance-state-name,Values=running" --query "Reservations[*].Instances[*].InstanceId" --output text)
-for NODE in $NODES; do
-  aws ec2 modify-instance-metadata-options --instance-id $NODE --http-put-response-hop-limit 2 > /dev/null 2>&1 || true
-done
 
 echo -e "   ${C_CYAN}-> Ajustando a 1 réplica e inyectando credenciales al ALB Controller...${C_RESET}"
 kubectl scale deployment aws-load-balancer-controller -n kube-system --replicas=1 > /dev/null 2>&1 || true
@@ -208,21 +232,13 @@ done
 
 echo -e "${C_GREEN}✔ Balanceador de Carga provisionado.${C_RESET}\n"
 
-# --- 5. HPA ---
-echo -e "${C_YELLOW}[Paso 5] Configurando Autoescalado (HPA)...${C_RESET}"
+# --- 6. HPA ---
+echo -e "${C_YELLOW}[Paso 6] Configurando Autoescalado (HPA)...${C_RESET}"
 kubectl apply -f hpa-get-products.yaml > /dev/null || true
 kubectl apply -f hpa-create-product.yaml > /dev/null || true
 kubectl apply -f hpa-update-product.yaml > /dev/null || true
 kubectl apply -f hpa-delete-product.yaml > /dev/null || true
 echo -e "${C_GREEN}✔ Políticas de autoescalado activadas.${C_RESET}\n"
-
-# --- 6. Habilitar Logs de EKS (Container Insights parcial) ---
-echo -e "${C_YELLOW}[Paso 6] Habilitando Logs del Plano de Control en CloudWatch...${C_RESET}"
-aws eks update-cluster-config \
-  --name $CLUSTER_NAME \
-  --region $REGION \
-  --logging '{"clusterLogging":[{"types":["api","audit","authenticator","controllerManager","scheduler"],"enabled":true}]}' > /dev/null 2>&1 || true
-echo -e "${C_GREEN}✔ Logs del clúster configurados.${C_RESET}\n"
 
 echo -e "${C_BLUE}=================================================================${C_RESET}"
 echo -e "${C_CYAN}🎉 DESPLIEGUE FINALIZADO CON ÉXITO 🎉${C_RESET}"
