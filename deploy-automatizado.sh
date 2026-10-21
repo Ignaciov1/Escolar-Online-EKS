@@ -9,7 +9,7 @@ C_CYAN='\e[1;36m'
 C_RESET='\e[0m'
 
 echo -e "${C_BLUE}=================================================================${C_RESET}"
-echo -e "${C_CYAN}🚀 INICIANDO DESPLIEGUE AUTOMATIZADO DE ESCOLARONLINE - EKS 🚀${C_RESET}"
+echo -e "${C_CYAN}🚀 INICIANDO DESPLIEGUE AUTOMATIZADO DE FRESHBOX SPA - EKS 🚀${C_RESET}"
 echo -e "${C_BLUE}=================================================================${C_RESET}\n"
 
 # --- 0. Instalación de Dependencias ---
@@ -38,28 +38,23 @@ echo -e "${C_GREEN}✔ Dependencias instaladas y configuradas.${C_RESET}\n"
 
 # --- Variables Dinámicas ---
 REGION="us-east-1"
-CLUSTER_NAME="escolaronline-cluster"
+CLUSTER_NAME="freshbox-cluster"
 ACCOUNT_ID="314870398011"
-REPO_DIR="/home/ubuntu/Escolar-Online-EKS"
+REPO_DIR="/home/ubuntu/FreshBox-EKS"
 
 # --- 1. Conexión y Base de Datos ---
 echo -e "${C_YELLOW}[Paso 1] Conectando a EKS y configurando base de datos RDS...${C_RESET}"
 aws eks update-kubeconfig --region $REGION --name $CLUSTER_NAME > /dev/null 2>&1
 
-# Habilitar IMDSv2 hop-limit=2 en los nodos desde el inicio para ALB y Container Insights
 NODES=$(aws ec2 describe-instances --filters "Name=instance-state-name,Values=running" --query "Reservations[*].Instances[*].InstanceId" --output text)
 for NODE in $NODES; do
   aws ec2 modify-instance-metadata-options --instance-id $NODE --http-put-response-hop-limit 2 > /dev/null 2>&1 || true
 done
 
-# >>> CAMBIO REGISTRADO: Se comenta esta línea. Al usar instancias más grandes (t4g.medium o superior) en Terraform,
-# ya no hay problemas de límite de 11 pods. Dejar que CoreDNS use sus 2 réplicas por defecto mejora la estabilidad de la red.
-# kubectl scale deployment coredns -n kube-system --replicas=1 > /dev/null 2>&1 || true
-
 VPC_ID=$(aws eks describe-cluster --name $CLUSTER_NAME --query "cluster.resourcesVpcConfig.vpcId" --output text)
 VPC_CIDR=$(aws ec2 describe-vpcs --vpc-ids $VPC_ID --query "Vpcs[0].CidrBlock" --output text)
-RDS_SG=$(aws rds describe-db-instances --db-instance-identifier escolaronline-db --query "DBInstances[0].VpcSecurityGroups[0].VpcSecurityGroupId" --output text)
-RDS_ENDPOINT=$(aws rds describe-db-instances --db-instance-identifier escolaronline-db --query "DBInstances[0].Endpoint.Address" --output text)
+RDS_SG=$(aws rds describe-db-instances --db-instance-identifier freshbox-db --query "DBInstances[0].VpcSecurityGroups[0].VpcSecurityGroupId" --output text)
+RDS_ENDPOINT=$(aws rds describe-db-instances --db-instance-identifier freshbox-db --query "DBInstances[0].Endpoint.Address" --output text)
 
 echo -e "   ${C_CYAN}-> DNS Dinámico de RDS: ${C_RESET}$RDS_ENDPOINT"
 aws ec2 authorize-security-group-ingress --group-id $RDS_SG --protocol tcp --port 3306 --cidr $VPC_CIDR > /dev/null 2>&1 || true
@@ -80,12 +75,9 @@ aws ecr get-login-password --region $REGION | sudo docker login --username AWS -
 sudo ./scripts/ecr-push.sh > /dev/null 2>&1 || true
 echo -e "${C_GREEN}✔ Imágenes compiladas y alojadas en ECR.${C_RESET}\n"
 
-# --- 3. Despliegue de Container Insights (Primero para reservar cupo DaemonSet en cada nodo) ---
-echo -e "${C_YELLOW}[Paso 3] Habilitando CloudWatch Container Insights y Logs de EKS...${C_RESET}"
-aws eks update-cluster-config \
-  --name $CLUSTER_NAME \
-  --region $REGION \
-  --logging '{"clusterLogging":[{"types":["api","audit","authenticator","controllerManager","scheduler"],"enabled":true}]}' > /dev/null 2>&1 || true
+# --- 3. Despliegue de Container Insights ---
+echo -e "${C_YELLOW}[Paso 3] Habilitando CloudWatch Container Insights...${C_RESET}"
+aws eks update-cluster-config --name $CLUSTER_NAME --region $REGION --logging '{"clusterLogging":[{"types":["api","audit","authenticator","controllerManager","scheduler"],"enabled":true}]}' > /dev/null 2>&1 || true
 
 FluentBitHttpPort='2020'
 FluentBitReadFromHead='Off'
@@ -96,11 +88,12 @@ curl -s https://raw.githubusercontent.com/aws-samples/amazon-cloudwatch-containe
 | sed 's/{{cluster_name}}/'${CLUSTER_NAME}'/;s/{{region_name}}/'${REGION}'/;s/{{http_server_toggle}}/"'${FluentBitHttpServer}'"/;s/{{http_server_port}}/"'${FluentBitHttpPort}'"/;s/{{read_from_head}}/"'${FluentBitReadFromHead}'"/;s/{{read_from_tail}}/"'${FluentBitReadFromTail}'"/' \
 | kubectl apply -f - > /dev/null 2>&1 || true
 
-echo -e "${C_GREEN}✔ Agentes de Container Insights y Logs configurados.${C_RESET}\n"
+echo -e "${C_GREEN}✔ Panel de Container Insights creado bajo el nombre 'freshbox-cluster'.${C_RESET}\n"
 
 # --- 4. Despliegue de Microservicios Kubernetes ---
 echo -e "${C_YELLOW}[Paso 4] Desplegando manifiestos de Kubernetes...${C_RESET}"
 cd $REPO_DIR/k8s
+
 sed -i "s/<ACCOUNT_ID>/$ACCOUNT_ID/g" *-deployment.yaml
 sed -i "s/<RDS_ENDPOINT>/$RDS_ENDPOINT/g" configmap.yaml
 sed -i "s/<RDS_ENDPOINT>/$RDS_ENDPOINT/g" secret.yaml
@@ -110,9 +103,6 @@ kubectl apply -f configmap.yaml > /dev/null
 kubectl apply -f secret.yaml > /dev/null
 kubectl apply -f frontend-deployment.yaml > /dev/null
 kubectl apply -f frontend-service.yaml > /dev/null
-
-# >>> CAMBIO REGISTRADO: Con instancias t4g.medium (34 pods máx), el frontend también puede mantener sus 2 réplicas originales.
-# kubectl scale deployment frontend -n escolaronline --replicas=1 > /dev/null 2>&1 || true
 
 kubectl apply -f get-products-deployment.yaml > /dev/null
 kubectl apply -f get-products-service.yaml > /dev/null
@@ -124,7 +114,7 @@ kubectl apply -f delete-product-deployment.yaml > /dev/null
 kubectl apply -f delete-product-service.yaml > /dev/null
 
 echo -e "   ${C_CYAN}-> Esperando a que los microservicios estén en ejecución...${C_RESET}"
-kubectl rollout status deployment frontend get-products create-product update-product delete-product -n escolaronline --timeout=120s > /dev/null 2>&1 || true
+kubectl rollout status deployment frontend get-products create-product update-product delete-product -n freshbox --timeout=120s > /dev/null 2>&1 || true
 
 echo -e "${C_GREEN}✔ Microservicios desplegados en el clúster.${C_RESET}\n"
 
@@ -142,19 +132,11 @@ echo -e "   ${C_CYAN}-> Aplicando manifiesto del ALB Controller...${C_RESET}"
 curl -s -Lo v2_5_4_full.yaml https://github.com/kubernetes-sigs/aws-load-balancer-controller/releases/download/v2.5.4/v2_5_4_full.yaml
 sed -i "s/your-cluster-name/$CLUSTER_NAME/g" v2_5_4_full.yaml
 sed -i "s/--cluster-name=$CLUSTER_NAME/--cluster-name=$CLUSTER_NAME\n        - --aws-region=$REGION\n        - --aws-vpc-id=$VPC_ID/g" v2_5_4_full.yaml
-
-# >>> CAMBIO REGISTRADO: Reemplazamos 'replicas: 2' por 'replicas: 1' en el YAML original ANTES de aplicarlo.
-# Esto asegura que el pod nazca directamente en singular, dejando espacio libre en el nodo.
 sed -i 's/replicas: 2/replicas: 1/g' v2_5_4_full.yaml
 
 kubectl apply -f v2_5_4_full.yaml > /dev/null 2>&1 || true
 
 echo -e "   ${C_CYAN}-> Inyectando credenciales al ALB Controller...${C_RESET}"
-
-# >>> CAMBIO REGISTRADO: Se eliminó la línea "kubectl scale deployment aws-load-balancer-controller...".
-# Ya no es necesaria porque modificamos el YAML arriba. Al eliminarla evitamos la condición de carrera
-# que provocaba el error de "1 old replicas are pending termination" durante el Rolling Update.
-
 export AWS_AK=$(awk -F'=' '/aws_access_key_id/ {print $2}' ~/.aws/credentials | tr -d ' ' | tr -d '\r')
 export AWS_SK=$(awk -F'=' '/aws_secret_access_key/ {print $2}' ~/.aws/credentials | tr -d ' ' | tr -d '\r')
 export AWS_ST=$(awk -F'=' '/aws_session_token/ {print $2}' ~/.aws/credentials | tr -d ' ' | tr -d '\r')
@@ -169,15 +151,15 @@ kubectl rollout status deployment aws-load-balancer-controller -n kube-system --
 sleep 10
 
 echo -e "   ${C_CYAN}-> Generando e importando certificado ACM para HTTPS...${C_RESET}"
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout alb_key.pem -out alb_cert.pem -subj "/CN=escolaronline-local.com/O=EscolarOnline" 2>/dev/null
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout alb_key.pem -out alb_cert.pem -subj "/CN=freshbox-local.com/O=FreshBox" 2>/dev/null
 CERT_ARN=$(aws acm import-certificate --certificate fileb://alb_cert.pem --private-key fileb://alb_key.pem --query "CertificateArn" --output text)
 
 cat << INGRESS_EOF > ingress-advanced.yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: escolaronline-ingress
-  namespace: escolaronline
+  name: freshbox-ingress
+  namespace: freshbox
   annotations:
     kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
@@ -253,5 +235,5 @@ echo -e "${C_GREEN}✔ Políticas de autoescalado activadas.${C_RESET}\n"
 
 echo -e "${C_BLUE}=================================================================${C_RESET}"
 echo -e "${C_CYAN}🎉 DESPLIEGUE FINALIZADO CON ÉXITO 🎉${C_RESET}"
-echo -e "Espera un par de minutos y ejecuta ${C_YELLOW}kubectl get ingress -n escolaronline${C_RESET} para obtener tu URL pública."
+echo -e "Espera un par de minutos y ejecuta ${C_YELLOW}kubectl get ingress -n freshbox${C_RESET} para obtener tu URL pública."
 echo -e "${C_BLUE}=================================================================${C_RESET}\n"

@@ -2,7 +2,7 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: delete-product-hpa
-  namespace: escolaronline
+  namespace: freshbox
 spec:
   scaleTargetRef:
     apiVersion: apps/v1

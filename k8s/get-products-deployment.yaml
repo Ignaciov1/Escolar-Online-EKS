@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: get-products
-  namespace: escolaronline
+  namespace: freshbox
   labels:
     app: get-products
 spec:
@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: get-products
-        image: 314870398011.dkr.ecr.us-east-1.amazonaws.com/escolaronline-get-products:latest
+        image: 314870398011.dkr.ecr.us-east-1.amazonaws.com/freshbox-get-products:latest
         ports:
         - containerPort: 3001
         env:
@@ -26,27 +26,27 @@ spec:
         - name: DB_HOST
           valueFrom:
             configMapKeyRef:
-              name: escolaronline-config
+              name: freshbox-config
               key: DB_HOST
         - name: DB_NAME
           valueFrom:
             configMapKeyRef:
-              name: escolaronline-config
+              name: freshbox-config
               key: DB_NAME
         - name: DB_PORT
           valueFrom:
             configMapKeyRef:
-              name: escolaronline-config
+              name: freshbox-config
               key: DB_PORT
         - name: DB_USER
           valueFrom:
-            secretKeyRef:
-              name: escolaronline-secret
+            configMapKeyRef:
+              name: freshbox-secret
               key: DB_USER
         - name: DB_PASS
           valueFrom:
-            secretKeyRef:
-              name: escolaronline-secret
+            configMapKeyRef:
+              name: freshbox-secret
               key: DB_PASS
         resources:
           requests:

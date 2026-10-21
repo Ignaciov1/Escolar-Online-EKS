@@ -1,5 +1,5 @@
 {
-  "name": "escolaronline-create-product",
+  "name": "freshbox-create-product",
   "version": "1.0.0",
   "description": "Microservicio crear producto - EKS",
   "main": "index.js",

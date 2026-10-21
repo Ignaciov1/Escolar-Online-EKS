@@ -1,14 +1,14 @@
 -- ============================================
--- EscolarOnline - Base de Datos (RDS MySQL)
--- Actividad 2.3 - Arquitectura Cloud ARY1102
+-- FreshBox SpA - Base de Datos (RDS MySQL)
+-- Evaluación Parcial 2 - Arquitectura Cloud ARY1102
 -- ============================================
 -- Ejecutar en RDS MySQL Multi-AZ via mysql client
 -- Conexion: mysql -h <RDS_ENDPOINT> -u alumno -palumno123
 
-CREATE DATABASE IF NOT EXISTS escolar_online;
-USE escolar_online;
+CREATE DATABASE IF NOT EXISTS freshbox_db;
+USE freshbox_db;
 
--- Tabla de productos escolares
+-- Tabla de productos organicos y saludables
 CREATE TABLE IF NOT EXISTS productos (
     id INT AUTO_INCREMENT PRIMARY KEY,
     nombre VARCHAR(255) NOT NULL,
@@ -21,12 +21,12 @@ CREATE TABLE IF NOT EXISTS productos (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
--- Datos de prueba: 5 productos escolares
+-- Datos de prueba: 5 productos organicos
 INSERT INTO productos (nombre, descripcion, precio, stock, categoria) VALUES
-('Cuaderno universitario 100 hojas', 'Cuaderno matematicas cuadro grande, tapa dura, 100 hojas', 2990.00, 150, 'Cuadernos'),
-('Mochila escolar reforzada', 'Mochila con compartimentos, material resistente al agua, correas acolchadas', 24990.00, 45, 'Mochilas'),
-('Set 12 lapices de colores', 'Lapices de colores profesionales, mina suave, 12 unidades', 4990.00, 200, 'Lapices'),
-('Calculadora cientifica', 'Calculadora cientifica 240 funciones, pantalla LCD, incluye tapa protectora', 12990.00, 60, 'Tecnologia'),
-('Estuche escolar doble cierre', 'Estuche amplio con doble compartimento y cierre metalico', 6990.00, 80, 'Estuches');
+('Manzanas Organicas', 'Manzanas frescas cultivadas sin pesticidas, malla 1 kg', 2500.00, 100, 'Frutas'),
+('Palta Hass de Exportacion', 'Paltas cremosas de primera seleccion, 1 kg', 4990.00, 50, 'Verduras'),
+('Miel de Abeja Natural', 'Miel 100% cruda y natural de bosque nativo, 500g', 6500.00, 80, 'Despensa'),
+('Quinoa Blanca Organica', 'Quinoa lavada lista para cocinar, alta en proteinas, 500g', 3200.00, 120, 'Cereales'),
+('Lechuga Hidroponica', 'Lechuga fresca cultivada en agua, libre de tierra y quimicos', 1200.00, 40, 'Verduras');
 
 -- 2026 - Disenador asignatura: Ignacio A. Pastenet M.

@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: delete-product
-  namespace: escolaronline
+  namespace: freshbox
   labels:
     app: delete-product
 spec:
@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: delete-product
-        image: 314870398011.dkr.ecr.us-east-1.amazonaws.com/escolaronline-delete-product:latest
+        image: 314870398011.dkr.ecr.us-east-1.amazonaws.com/freshbox-delete-product:latest
         ports:
         - containerPort: 3004
         env:
@@ -26,27 +26,27 @@ spec:
         - name: DB_HOST
           valueFrom:
             configMapKeyRef:
-              name: escolaronline-config
+              name: freshbox-config
               key: DB_HOST
         - name: DB_NAME
           valueFrom:
             configMapKeyRef:
-              name: escolaronline-config
+              name: freshbox-config
               key: DB_NAME
         - name: DB_PORT
           valueFrom:
             configMapKeyRef:
-              name: escolaronline-config
+              name: freshbox-config
               key: DB_PORT
         - name: DB_USER
           valueFrom:
             secretKeyRef:
-              name: escolaronline-secret
+              name: freshbox-secret
               key: DB_USER
         - name: DB_PASS
           valueFrom:
             secretKeyRef:
-              name: escolaronline-secret
+              name: freshbox-secret
               key: DB_PASS
         resources:
           requests:

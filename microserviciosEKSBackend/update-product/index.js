@@ -5,7 +5,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 const PORT = process.env.PORT || 3003;
-const dbConfig = { host: process.env.DB_HOST || 'localhost', user: process.env.DB_USER || 'alumno', password: process.env.DB_PASS || 'alumno123', database: process.env.DB_NAME || 'escolar_online', port: process.env.DB_PORT || 3306 };
+const dbConfig = { host: process.env.DB_HOST || 'localhost', user: process.env.DB_USER || 'alumno', password: process.env.DB_PASS || 'alumno123', database: process.env.DB_NAME || 'freshbox_db', port: process.env.DB_PORT || 3306 };
 
 // --- NUEVO: Health Check explícito para el ALB de AWS en la ruta raíz ---
 app.get('/', (req, res) => {

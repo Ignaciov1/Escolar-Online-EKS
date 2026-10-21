@@ -1,5 +1,5 @@
 {
-  "name": "escolaronline-update-product",
+  "name": "freshbox-update-product",
   "version": "1.0.0",
   "description": "Microservicio modificar producto - EKS",
   "main": "index.js",

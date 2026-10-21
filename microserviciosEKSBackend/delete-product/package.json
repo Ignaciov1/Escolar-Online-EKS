@@ -1,5 +1,5 @@
 {
-  "name": "escolaronline-delete-product",
+  "name": "freshbox-delete-product",
   "version": "1.0.0",
   "description": "Microservicio eliminar producto - EKS",
   "main": "index.js",

@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: escolaronline
+  name: freshbox
   labels:
-    app: escolaronline
+    app: freshbox
     environment: production

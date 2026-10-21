@@ -1,5 +1,5 @@
 {
-  "name": "escolaronline-get-products",
+  "name": "freshbox-get-products",
   "version": "1.0.0",
   "description": "Microservicio consultar productos - EKS",
   "main": "index.js",

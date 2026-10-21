@@ -1,4 +1,4 @@
-// EscolarOnline - Frontend CRUD - ACT2.3 EKS
+// FreshBox SpA - Frontend CRUD - ACT2.3 EKS
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost' : window.location.origin;
 const API_GET = API_BASE + ':3001/api/products';
 const API_POST = API_BASE + ':3002/api/products';
