@@ -52,7 +52,7 @@ for NODE in $NODES; do
   aws ec2 modify-instance-metadata-options --instance-id $NODE --http-put-response-hop-limit 2 > /dev/null 2>&1 || true
 done
 
-# >>> CAMBIO REGISTRADO: Se comenta esta línea. Al usar instancias más grandes (t4g.medium o superior) en Terraform, 
+# >>> CAMBIO REGISTRADO: Se comenta esta línea. Al usar instancias más grandes (t4g.medium o superior) en Terraform,
 # ya no hay problemas de límite de 11 pods. Dejar que CoreDNS use sus 2 réplicas por defecto mejora la estabilidad de la red.
 # kubectl scale deployment coredns -n kube-system --replicas=1 > /dev/null 2>&1 || true
 
@@ -110,7 +110,9 @@ kubectl apply -f configmap.yaml > /dev/null
 kubectl apply -f secret.yaml > /dev/null
 kubectl apply -f frontend-deployment.yaml > /dev/null
 kubectl apply -f frontend-service.yaml > /dev/null
-kubectl scale deployment frontend -n escolaronline --replicas=1 > /dev/null 2>&1 || true
+
+# >>> CAMBIO REGISTRADO: Con instancias t4g.medium (34 pods máx), el frontend también puede mantener sus 2 réplicas originales.
+# kubectl scale deployment frontend -n escolaronline --replicas=1 > /dev/null 2>&1 || true
 
 kubectl apply -f get-products-deployment.yaml > /dev/null
 kubectl apply -f get-products-service.yaml > /dev/null
