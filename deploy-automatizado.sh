@@ -45,6 +45,7 @@ REPO_DIR="/home/ubuntu/FreshBox-EKS"
 # --- 1. Conexión y Base de Datos ---
 echo -e "${C_YELLOW}[Paso 1] Conectando a EKS y configurando base de datos RDS...${C_RESET}"
 aws eks update-kubeconfig --region $REGION --name $CLUSTER_NAME > /dev/null 2>&1
+sudo cp -r ~/.aws /root/ 2>/dev/null || true
 
 NODES=$(aws ec2 describe-instances --filters "Name=instance-state-name,Values=running" --query "Reservations[*].Instances[*].InstanceId" --output text)
 for NODE in $NODES; do
@@ -65,14 +66,18 @@ echo -e "${C_GREEN}✔ Base de datos poblada exitosamente.${C_RESET}\n"
 
 # --- 2. Preparación y ECR ---
 echo -e "${C_YELLOW}[Paso 2] Configurando frontend y subiendo imágenes a ECR...${C_RESET}"
+git checkout -- microservicioEKSFrontend/js/app.js 2>/dev/null || true
 sed -i "s/:3001//g" microservicioEKSFrontend/js/app.js
 sed -i "s/:3002//g" microservicioEKSFrontend/js/app.js
 sed -i "s/:3003//g" microservicioEKSFrontend/js/app.js
 sed -i "s/:3004//g" microservicioEKSFrontend/js/app.js
 
 chmod +x scripts/ecr-push.sh
-aws ecr get-login-password --region $REGION | sudo docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com > /dev/null 2>&1
-sudo ./scripts/ecr-push.sh > /dev/null 2>&1 || true
+echo -e "   ${C_CYAN}-> Autenticando Docker con Amazon ECR...${C_RESET}"
+aws ecr get-login-password --region $REGION | sudo docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
+
+echo -e "   ${C_CYAN}-> Compilando y subiendo las 5 imágenes (mostrando progreso en vivo)...${C_RESET}"
+sudo -E ./scripts/ecr-push.sh || true
 echo -e "${C_GREEN}✔ Imágenes compiladas y alojadas en ECR.${C_RESET}\n"
 
 # --- 3. Despliegue de Metrics Server y Container Insights (Enhanced) ---
