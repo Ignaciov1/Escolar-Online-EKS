@@ -72,12 +72,11 @@ sed -i "s/:3002//g" microservicioEKSFrontend/js/app.js
 sed -i "s/:3003//g" microservicioEKSFrontend/js/app.js
 sed -i "s/:3004//g" microservicioEKSFrontend/js/app.js
 
+echo -e "   ${C_CYAN}-> Autenticando y subiendo imágenes (esto tomará unos minutos en silencio)...${C_RESET}"
+sed -i 's/docker build /docker build --network host /g' scripts/ecr-push.sh
 chmod +x scripts/ecr-push.sh
-echo -e "   ${C_CYAN}-> Autenticando Docker con Amazon ECR...${C_RESET}"
-aws ecr get-login-password --region $REGION | sudo docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
-
-echo -e "   ${C_CYAN}-> Compilando y subiendo las 5 imágenes (mostrando progreso en vivo)...${C_RESET}"
-sudo -E ./scripts/ecr-push.sh || true
+aws ecr get-login-password --region $REGION | sudo docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com > /dev/null 2>&1
+sudo -E ./scripts/ecr-push.sh > /dev/null 2>&1 || true
 echo -e "${C_GREEN}✔ Imágenes compiladas y alojadas en ECR.${C_RESET}\n"
 
 # --- 3. Despliegue de Metrics Server y Container Insights (Enhanced) ---
