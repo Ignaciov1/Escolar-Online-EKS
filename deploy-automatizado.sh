@@ -48,7 +48,7 @@ aws eks update-kubeconfig --region $REGION --name $CLUSTER_NAME > /dev/null 2>&1
 
 NODES=$(aws ec2 describe-instances --filters "Name=instance-state-name,Values=running" --query "Reservations[*].Instances[*].InstanceId" --output text)
 for NODE in $NODES; do
-  aws ec2 modify-instance-metadata-options --instance-id $NODE --http-put-response-hop-limit 2 > /dev/null 2>&1 || true
+    aws ec2 modify-instance-metadata-options --instance-id $NODE --http-put-response-hop-limit 2 > /dev/null 2>&1 || true
 done
 
 VPC_ID=$(aws eks describe-cluster --name $CLUSTER_NAME --query "cluster.resourcesVpcConfig.vpcId" --output text)
@@ -75,10 +75,15 @@ aws ecr get-login-password --region $REGION | sudo docker login --username AWS -
 sudo ./scripts/ecr-push.sh > /dev/null 2>&1 || true
 echo -e "${C_GREEN}✔ Imágenes compiladas y alojadas en ECR.${C_RESET}\n"
 
-# --- 3. Despliegue de Container Insights ---
-echo -e "${C_YELLOW}[Paso 3] Habilitando CloudWatch Container Insights...${C_RESET}"
+# --- 3. Despliegue de Metrics Server y Container Insights (Enhanced) ---
+echo -e "${C_YELLOW}[Paso 3] Habilitando Metrics Server y CloudWatch Container Insights (Enhanced)...${C_RESET}"
 aws eks update-cluster-config --name $CLUSTER_NAME --region $REGION --logging '{"clusterLogging":[{"types":["api","audit","authenticator","controllerManager","scheduler"],"enabled":true}]}' > /dev/null 2>&1 || true
 
+echo -e "   ${C_CYAN}-> Instalando Metrics Server (kubectl top)...${C_RESET}"
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml > /dev/null 2>&1 || true
+kubectl rollout status deployment/metrics-server -n kube-system --timeout=90s > /dev/null 2>&1 || true
+
+echo -e "   ${C_CYAN}-> Desplegando base de Container Insights y Fluent Bit...${C_RESET}"
 FluentBitHttpPort='2020'
 FluentBitReadFromHead='Off'
 FluentBitReadFromTail='On'
@@ -88,7 +93,40 @@ curl -s https://raw.githubusercontent.com/aws-samples/amazon-cloudwatch-containe
 | sed 's/{{cluster_name}}/'${CLUSTER_NAME}'/;s/{{region_name}}/'${REGION}'/;s/{{http_server_toggle}}/"'${FluentBitHttpServer}'"/;s/{{http_server_port}}/"'${FluentBitHttpPort}'"/;s/{{read_from_head}}/"'${FluentBitReadFromHead}'"/;s/{{read_from_tail}}/"'${FluentBitReadFromTail}'"/' \
 | kubectl apply -f - > /dev/null 2>&1 || true
 
-echo -e "${C_GREEN}✔ Panel de Container Insights creado bajo el nombre 'freshbox-cluster'.${C_RESET}\n"
+echo -e "   ${C_CYAN}-> Aplicando permisos RBAC oficiales y Observabilidad Mejorada...${C_RESET}"
+kubectl apply -f https://raw.githubusercontent.com/aws-samples/amazon-cloudwatch-container-insights/latest/k8s-deployment-manifest-templates/deployment-mode/daemonset/container-insights-monitoring/cloudwatch-namespace.yaml > /dev/null 2>&1 || true
+kubectl apply -f https://raw.githubusercontent.com/aws-samples/amazon-cloudwatch-container-insights/latest/k8s-deployment-manifest-templates/deployment-mode/daemonset/container-insights-monitoring/cwagent/cwagent-serviceaccount.yaml > /dev/null 2>&1 || true
+
+cat <<EOF | kubectl apply -f - > /dev/null 2>&1
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cwagentconfig
+  namespace: amazon-cloudwatch
+data:
+  cwagentconfig.json: |
+    {
+      "agent": {
+        "region": "${REGION}"
+      },
+      "logs": {
+        "metrics_collected": {
+          "kubernetes": {
+            "cluster_name": "${CLUSTER_NAME}",
+            "metrics_collection_interval": 60,
+            "enhanced_container_insights": true
+          }
+        },
+        "force_flush_interval": 5
+      }
+    }
+EOF
+
+kubectl set image daemonset/cloudwatch-agent cloudwatch-agent=public.ecr.aws/cloudwatch-agent/cloudwatch-agent:latest -n amazon-cloudwatch > /dev/null 2>&1 || true
+kubectl rollout restart daemonset/cloudwatch-agent -n amazon-cloudwatch > /dev/null 2>&1 || true
+kubectl rollout status daemonset/cloudwatch-agent -n amazon-cloudwatch --timeout=90s > /dev/null 2>&1 || true
+
+echo -e "${C_GREEN}✔ Metrics Server y Container Insights (Enhanced) activos en '${CLUSTER_NAME}'.${C_RESET}\n"
 
 # --- 4. Despliegue de Microservicios Kubernetes ---
 echo -e "${C_YELLOW}[Paso 4] Desplegando manifiestos de Kubernetes...${C_RESET}"
